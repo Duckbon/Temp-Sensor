@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Room Conditions</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #2b6cb0, #4299e1);
+    transition: background 1.2s ease;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+
+  .card {
+    background: rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 22px;
+    padding: 26px 22px;
+    width: 90%;
+    max-width: 320px;
+    text-align: center;
+    box-shadow: 0 10px 34px rgba(0,0,0,0.28);
+  }
+
+  .title {
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .big-temp {
+    font-size: 56px;
+    font-weight: 700;
+    color: white;
+    line-height: 1;
+    margin-bottom: 4px;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  }
+
+  .status-text {
+    color: rgba(255,255,255,0.9);
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 18px;
+  }
+
+  .readings {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .reading {
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 14px;
+    padding: 12px 16px;
+    flex: 1;
+  }
+
+  .reading .value {
+    font-size: 22px;
+    font-weight: 700;
+    color: white;
+  }
+
+  .reading .label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.7);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .updated {
+    margin-top: 14px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.55);
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="title">My Room</div>
+  <div class="big-temp" id="bigTemp">--°</div>
+  <div class="status-text" id="statusText">Loading...</div>
+
+  <div class="readings">
+    <div class="reading">
+      <div class="value" id="tempValue">--°C</div>
+      <div class="label">Temp</div>
+    </div>
+    <div class="reading">
+      <div class="value" id="humidityValue">--%</div>
+      <div class="label">Humidity</div>
+    </div>
+  </div>
+
+  <div class="updated" id="updatedText"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCPpSny6LxmkfF7wlz5J9OFjnsdcL6ZTzI",
+    authDomain: "temp-sensor-ff5c3.firebaseapp.com",
+    databaseURL: "https://temp-sensor-ff5c3-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "temp-sensor-ff5c3",
+    storageBucket: "temp-sensor-ff5c3.firebasestorage.app",
+    messagingSenderId: "737912734726",
+    appId: "1:737912734726:web:3d9cde8961dcd49061ef87"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const bigTemp = document.getElementById('bigTemp');
+  const statusText = document.getElementById('statusText');
+  const tempValue = document.getElementById('tempValue');
+  const humidityValue = document.getElementById('humidityValue');
+  const updatedText = document.getElementById('updatedText');
+
+  function formatTime() {
+    const now = new Date();
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Color stops: [temperature, gradient start, gradient end, status label]
+  const colorStops = [
+    { temp: 10, from: '#2b6cb0', to: '#4299e1', label: 'Cold' },
+    { temp: 18, from: '#2c7a7b', to: '#38b2ac', label: 'Cool' },
+    { temp: 23, from: '#2f855a', to: '#48bb78', label: 'Comfortable' },
+    { temp: 28, from: '#c05621', to: '#ed8936', label: 'Warm' },
+    { temp: 35, from: '#c53030', to: '#f56565', label: 'Hot' }
+  ];
+
+  function getColorForTemp(temp) {
+    if (temp <= colorStops[0].temp) return colorStops[0];
+    for (let i = 1; i < colorStops.length; i++) {
+      if (temp <= colorStops[i].temp) return colorStops[i];
+    }
+    return colorStops[colorStops.length - 1];
+  }
+
+  function updateDisplay(temp) {
+    const stop = getColorForTemp(temp);
+    document.body.style.background = `linear-gradient(135deg, ${stop.from}, ${stop.to})`;
+    bigTemp.textContent = temp.toFixed(1) + '°';
+    statusText.textContent = stop.label;
+  }
+
+  db.ref('/temperature').on('value', (snapshot) => {
+    const val = snapshot.val();
+    if (val !== null) {
+      tempValue.textContent = val.toFixed(1) + '°C';
+      updateDisplay(val);
+      updatedText.textContent = 'Updated ' + formatTime();
+    }
+  });
+
+  db.ref('/humidity').on('value', (snapshot) => {
+    const val = snapshot.val();
+    if (val !== null) {
+      humidityValue.textContent = val.toFixed(0) + '%';
+    }
+  });
+</script>
+
+</body>
+</html>
