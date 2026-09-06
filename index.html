@@ -94,11 +94,59 @@
     font-size: 10px;
     color: rgba(255,255,255,0.55);
   }
+
+  .button-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+    justify-content: center;
+  }
+
+  .range-btn {
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 10px;
+    padding: 8px 14px;
+    color: rgba(255,255,255,0.8);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .range-btn:hover {
+    background: rgba(255,255,255,0.2);
+  }
+
+  .range-btn.active {
+    background: rgba(255,255,255,0.35);
+    color: white;
+  }
+
+  .chart-wrap {
+    margin-top: 16px;
+    background: rgba(0,0,0,0.15);
+    border-radius: 14px;
+    padding: 10px;
+  }
+
+  .stats-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.75);
+  }
+
+  .stats-row .stat-value {
+    font-weight: 700;
+    color: white;
+  }
 </style>
 </head>
 <body>
 
-<div class="card">
+<div class="card" style="max-width: 460px;">
   <div class="title">My Room</div>
   <div class="big-temp" id="bigTemp">--°</div>
   <div class="status-text" id="statusText">Loading...</div>
@@ -115,7 +163,25 @@
   </div>
 
   <div class="updated" id="updatedText"></div>
+
+  <div class="button-row">
+    <div class="range-btn active" data-range="day">Day</div>
+    <div class="range-btn" data-range="week">Week</div>
+    <div class="range-btn" data-range="month">Month</div>
+    <div class="range-btn" data-range="year">Year</div>
+  </div>
+
+  <div class="chart-wrap">
+    <canvas id="tempChart" height="160"></canvas>
+  </div>
+
+  <div class="stats-row">
+    <div>Today's avg: <span class="stat-value" id="avgValue">--°</span></div>
+    <div id="compareValue">--</div>
+  </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -184,6 +250,137 @@
       humidityValue.textContent = val.toFixed(0) + '%';
     }
   });
+
+  // ------------------------------
+  // History graph
+  // ------------------------------
+  let allHistory = []; // {timestamp (seconds), temperature, humidity}
+  let currentRange = 'day';
+  let chart = null;
+
+  const avgValue = document.getElementById('avgValue');
+  const compareValue = document.getElementById('compareValue');
+  const rangeButtons = document.querySelectorAll('.range-btn');
+
+  rangeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      rangeButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentRange = btn.dataset.range;
+      renderChart();
+    });
+  });
+
+  function rangeToSeconds(range) {
+    const day = 86400;
+    if (range === 'day') return day;
+    if (range === 'week') return day * 7;
+    if (range === 'month') return day * 30;
+    if (range === 'year') return day * 365;
+    return day;
+  }
+
+  function renderChart() {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const windowSec = rangeToSeconds(currentRange);
+    const filtered = allHistory.filter(entry => entry.timestamp >= nowSec - windowSec);
+
+    const labels = filtered.map(entry => {
+      const d = new Date(entry.timestamp * 1000);
+      if (currentRange === 'day') {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      }
+    });
+    const temps = filtered.map(entry => entry.temperature);
+
+    if (chart) {
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = temps;
+      chart.update();
+    } else {
+      const ctx = document.getElementById('tempChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Temperature (°C)',
+            data: temps,
+            borderColor: 'rgba(255,255,255,0.9)',
+            backgroundColor: 'rgba(255,255,255,0.15)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: 'rgba(255,255,255,0.6)', maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.08)' } },
+            y: { ticks: { color: 'rgba(255,255,255,0.6)' }, grid: { color: 'rgba(255,255,255,0.08)' } }
+          }
+        }
+      });
+    }
+
+    updateStats(filtered);
+  }
+
+  function updateStats(filtered) {
+    // Today's average
+    const nowSec = Math.floor(Date.now() / 1000);
+    const todayEntries = allHistory.filter(entry => entry.timestamp >= nowSec - 86400);
+    if (todayEntries.length > 0) {
+      const avg = todayEntries.reduce((sum, e) => sum + e.temperature, 0) / todayEntries.length;
+      avgValue.textContent = avg.toFixed(1) + '°';
+    }
+
+    // "This time last week" comparison
+    const targetTime = nowSec - (86400 * 7);
+    let closest = null;
+    let closestDiff = Infinity;
+    allHistory.forEach(entry => {
+      const diff = Math.abs(entry.timestamp - targetTime);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closest = entry;
+      }
+    });
+
+    if (closest && closestDiff < 3600) { // only compare if we have a reading within 1 hour of that time
+      const currentTemp = allHistory.length > 0 ? allHistory[allHistory.length - 1].temperature : null;
+      if (currentTemp !== null) {
+        const diffTemp = currentTemp - closest.temperature;
+        const direction = diffTemp > 0 ? 'hotter' : 'colder';
+        compareValue.textContent = `Last week: ${Math.abs(diffTemp).toFixed(1)}° ${direction}`;
+      }
+    } else {
+      compareValue.textContent = 'No data for last week yet';
+    }
+  }
+
+  function loadHistory() {
+    db.ref('/history').once('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+
+      allHistory = Object.keys(data).map(key => ({
+        timestamp: parseInt(key),
+        temperature: data[key].temperature,
+        humidity: data[key].humidity
+      })).sort((a, b) => a.timestamp - b.timestamp);
+
+      renderChart();
+    });
+  }
+
+  // Load history once on page load, and refresh every 5 minutes
+  loadHistory();
+  setInterval(loadHistory, 5 * 60 * 1000);
 </script>
 
 </body>
