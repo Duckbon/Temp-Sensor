@@ -179,6 +179,17 @@
     <div>Today's avg: <span class="stat-value" id="avgValue">--°</span></div>
     <div id="compareValue">--</div>
   </div>
+
+  <div class="readings" style="margin-top: 12px;">
+    <div class="reading">
+      <div class="value" id="sunriseValue">--:--</div>
+      <div class="label">Sunrise</div>
+    </div>
+    <div class="reading">
+      <div class="value" id="sunsetValue">--:--</div>
+      <div class="label">Sunset</div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -381,6 +392,34 @@
   // Load history once on page load, and refresh every 5 minutes
   loadHistory();
   setInterval(loadHistory, 5 * 60 * 1000);
+
+  // ------------------------------
+  // Sunrise / Sunset
+  // ------------------------------
+  function loadSunTimes() {
+    const lat = -27.56102;
+    const lng = 151.953354;
+    const url = `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&formatted=0`;
+
+    fetch(url)
+      .then(response => response.json())
+      .then(data => {
+        const sunrise = new Date(data.results.sunrise);
+        const sunset = new Date(data.results.sunset);
+
+        document.getElementById('sunriseValue').textContent =
+          sunrise.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        document.getElementById('sunsetValue').textContent =
+          sunset.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      })
+      .catch(err => {
+        console.error('Failed to load sun times:', err);
+      });
+  }
+
+  loadSunTimes();
+  // Sun times barely change minute to minute, refresh once an hour
+  setInterval(loadSunTimes, 60 * 60 * 1000);
 </script>
 
 </body>
